@@ -1,0 +1,684 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ==================================================
+    // FUNÇÕES
+    // ==================================================
+
+    function loggedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return loggedIn()
+        && request.auth.uid == uid;
+    }
+
+    function isAdmin() {
+      return loggedIn()
+        && exists(
+          /databases/$(database)/documents/admins/$(request.auth.uid)
+        )
+        && get(
+          /databases/$(database)/documents/admins/$(request.auth.uid)
+        ).data.active == true;
+    }
+
+    function validUsername(username) {
+      return username is string
+        && username.size() >= 2
+        && username.size() <= 30;
+    }
+
+    function validBio(bio) {
+      return bio is string
+        && bio.size() <= 500;
+    }
+
+    function validPhotoURL(url) {
+      return url is string
+        && url.size() <= 2048;
+    }
+
+
+    // ==================================================
+    // ADMINS
+    // ==================================================
+
+    match /admins/{uid} {
+
+      allow read:
+        if isOwner(uid);
+
+      allow create, update, delete:
+        if false;
+    }
+
+
+    // ==================================================
+    // USERS
+    // ==================================================
+
+    match /users/{uid} {
+
+      allow read:
+        if isOwner(uid)
+        || isAdmin();
+
+
+      allow create:
+        if isOwner(uid)
+
+        && request.resource.data.uid == uid
+
+        && request.resource.data.zytrixId is string
+        && request.resource.data.zytrixId.size() >= 5
+        && request.resource.data.zytrixId.size() <= 64
+
+        && request.resource.data.email is string
+        && request.resource.data.email.size() <= 320
+
+        && (
+          request.resource.data.provider == "password"
+          ||
+          request.resource.data.provider == "google"
+        )
+
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.lastLoginAt == request.time
+
+        && request.resource.data.keys().hasAll([
+          "uid",
+          "zytrixId",
+          "email",
+          "provider",
+          "createdAt",
+          "lastLoginAt"
+        ])
+
+        && request.resource.data.keys().hasOnly([
+          "uid",
+          "zytrixId",
+          "email",
+          "provider",
+          "createdAt",
+          "lastLoginAt"
+        ]);
+
+
+      allow update:
+        if
+        (
+          isOwner(uid)
+
+          && request.resource.data.uid
+              == resource.data.uid
+
+          && request.resource.data.provider
+              == resource.data.provider
+
+          && request.resource.data.createdAt
+              == resource.data.createdAt
+
+          && request.resource.data.lastLoginAt
+              == request.time
+
+          && request.resource.data.email is string
+
+          && (
+
+            (
+              resource.data.keys().hasAll([
+                "zytrixId"
+              ])
+
+              && request.resource.data.zytrixId
+                  == resource.data.zytrixId
+
+              && request.resource.data
+                  .diff(resource.data)
+                  .affectedKeys()
+                  .hasOnly([
+                    "email",
+                    "lastLoginAt"
+                  ])
+            )
+
+            ||
+
+            (
+              !resource.data.keys().hasAll([
+                "zytrixId"
+              ])
+
+              && request.resource.data.zytrixId is string
+
+              && request.resource.data.zytrixId.size() >= 5
+              && request.resource.data.zytrixId.size() <= 64
+
+              && request.resource.data
+                  .diff(resource.data)
+                  .affectedKeys()
+                  .hasOnly([
+                    "email",
+                    "lastLoginAt",
+                    "zytrixId"
+                  ])
+            )
+          )
+        )
+
+        ||
+
+        (
+          isAdmin()
+
+          && request.resource.data.uid
+              == resource.data.uid
+        );
+
+
+      allow delete:
+        if isOwner(uid)
+        || isAdmin();
+
+
+      // ================================================
+      // SEGUINDO
+      // ================================================
+
+      match /following/{channelId} {
+
+        allow read:
+          if isOwner(uid)
+          || isAdmin();
+
+        allow create:
+          if isOwner(uid)
+
+          && request.resource.data.channelId
+              == channelId
+
+          && request.resource.data.followedAt
+              == request.time
+
+          && request.resource.data.keys().hasOnly([
+            "channelId",
+            "followedAt"
+          ]);
+
+        allow update:
+          if false;
+
+        allow delete:
+          if isOwner(uid)
+          || isAdmin();
+      }
+
+
+      // ================================================
+      // HISTÓRICO
+      // ================================================
+
+      match /watchHistory/{streamId} {
+
+        allow read:
+          if isOwner(uid)
+          || isAdmin();
+
+        allow create, update:
+          if isOwner(uid);
+
+        allow delete:
+          if isOwner(uid)
+          || isAdmin();
+      }
+    }
+
+
+    // ==================================================
+    // PERFIS
+    // ==================================================
+
+    match /profiles/{uid} {
+
+      allow read:
+        if true;
+
+
+      allow create:
+        if isOwner(uid)
+
+        && request.resource.data.uid == uid
+
+        && validUsername(
+          request.resource.data.username
+        )
+
+        && validPhotoURL(
+          request.resource.data.photoURL
+        )
+
+        && validBio(
+          request.resource.data.bio
+        )
+
+        && request.resource.data.createdAt
+            == request.time
+
+        && request.resource.data.usernameUpdatedAt
+            == request.time
+
+        && request.resource.data.keys().hasAll([
+          "uid",
+          "username",
+          "photoURL",
+          "bio",
+          "createdAt",
+          "usernameUpdatedAt"
+        ])
+
+        && request.resource.data.keys().hasOnly([
+          "uid",
+          "username",
+          "photoURL",
+          "bio",
+          "createdAt",
+          "usernameUpdatedAt"
+        ]);
+
+
+      allow update:
+        if
+        (
+          isOwner(uid)
+
+          && request.resource.data.uid
+              == resource.data.uid
+
+          && request.resource.data.createdAt
+              == resource.data.createdAt
+
+          && validUsername(
+            request.resource.data.username
+          )
+
+          && validPhotoURL(
+            request.resource.data.photoURL
+          )
+
+          && validBio(
+            request.resource.data.bio
+          )
+
+          && (
+
+            // FOTO / BIO
+            (
+              request.resource.data.username
+                  == resource.data.username
+
+              && request.resource.data.usernameUpdatedAt
+                  == resource.data.usernameUpdatedAt
+
+              && request.resource.data
+                  .diff(resource.data)
+                  .affectedKeys()
+                  .hasOnly([
+                    "photoURL",
+                    "bio"
+                  ])
+            )
+
+            ||
+
+            // USERNAME A CADA 7 DIAS
+            (
+              request.resource.data.username
+                  != resource.data.username
+
+              && resource.data.usernameUpdatedAt
+                  is timestamp
+
+              && request.time
+                  >= resource.data.usernameUpdatedAt
+                     + duration.value(7, "d")
+
+              && request.resource.data.usernameUpdatedAt
+                  == request.time
+
+              && request.resource.data
+                  .diff(resource.data)
+                  .affectedKeys()
+                  .hasOnly([
+                    "username",
+                    "usernameUpdatedAt",
+                    "photoURL",
+                    "bio"
+                  ])
+            )
+          )
+        )
+
+        ||
+
+        (
+          isAdmin()
+
+          && request.resource.data.uid
+              == resource.data.uid
+
+          && request.resource.data.createdAt
+              == resource.data.createdAt
+        );
+
+
+      allow delete:
+        if isOwner(uid)
+        || isAdmin();
+    }
+
+
+    // ==================================================
+    // CANAIS
+    // ==================================================
+
+    match /channels/{channelId} {
+
+      allow read:
+        if true;
+
+
+      allow create:
+        if isOwner(channelId)
+
+        && request.resource.data.ownerUid
+            == request.auth.uid
+
+        && request.resource.data.createdAt
+            == request.time
+
+        && request.resource.data.keys().hasOnly([
+          "ownerUid",
+          "channelName",
+          "description",
+          "avatarURL",
+          "bannerURL",
+          "categoryId",
+          "isLive",
+          "currentStreamId",
+          "createdAt"
+        ]);
+
+
+      allow update:
+        if
+        (
+          isOwner(channelId)
+
+          && resource.data.ownerUid
+              == request.auth.uid
+
+          && request.resource.data.ownerUid
+              == resource.data.ownerUid
+
+          && request.resource.data.createdAt
+              == resource.data.createdAt
+
+          && request.resource.data
+              .diff(resource.data)
+              .affectedKeys()
+              .hasOnly([
+                "channelName",
+                "description",
+                "avatarURL",
+                "bannerURL",
+                "categoryId",
+                "isLive",
+                "currentStreamId"
+              ])
+        )
+
+        || isAdmin();
+
+
+      allow delete:
+        if
+        (
+          isOwner(channelId)
+
+          && resource.data.ownerUid
+              == request.auth.uid
+        )
+
+        || isAdmin();
+
+
+      // ================================================
+      // SEGUIDORES
+      // ================================================
+
+      match /followers/{followerUid} {
+
+        allow read:
+          if true;
+
+        allow create:
+          if isOwner(followerUid)
+
+          && request.resource.data.uid
+              == followerUid
+
+          && request.resource.data.followedAt
+              == request.time
+
+          && request.resource.data.keys().hasOnly([
+            "uid",
+            "followedAt"
+          ]);
+
+        allow update:
+          if false;
+
+        allow delete:
+          if isOwner(followerUid)
+          || isAdmin();
+      }
+
+
+      // ================================================
+      // DADOS PRIVADOS DO CANAL
+      // ================================================
+
+      match /private/{documentId} {
+
+        allow read, create, update, delete:
+          if isOwner(channelId)
+          || isAdmin();
+      }
+    }
+
+
+    // ==================================================
+    // LIVES
+    // ==================================================
+
+    match /streams/{streamId} {
+
+      // Home pode mostrar lives sem login.
+      allow read:
+        if true;
+
+
+      // ================================================
+      // CRIAR LIVE
+      // ================================================
+
+      allow create:
+        if loggedIn()
+
+        && request.resource.data.streamerUid
+            == request.auth.uid
+
+        && request.resource.data.channelId
+            == request.auth.uid
+
+        && request.resource.data.createdAt
+            == request.time
+
+        && request.resource.data.viewerCount
+            is int
+
+        && request.resource.data.viewerCount
+            == 0
+
+        && request.resource.data.keys().hasAll([
+          "streamerUid",
+          "channelId",
+          "title",
+          "description",
+          "categoryId",
+          "thumbnailURL",
+          "status",
+          "playbackURL",
+          "startedAt",
+          "endedAt",
+          "createdAt",
+          "viewerCount"
+        ])
+
+        && request.resource.data.keys().hasOnly([
+          "streamerUid",
+          "channelId",
+          "title",
+          "description",
+          "categoryId",
+          "thumbnailURL",
+          "status",
+          "playbackURL",
+          "startedAt",
+          "endedAt",
+          "createdAt",
+          "viewerCount"
+        ]);
+
+
+      // ================================================
+      // ATUALIZAR LIVE
+      // ================================================
+
+      allow update:
+        if
+        (
+          loggedIn()
+
+          && resource.data.streamerUid
+              == request.auth.uid
+
+          && request.resource.data.streamerUid
+              == resource.data.streamerUid
+
+          && request.resource.data.channelId
+              == resource.data.channelId
+
+          && request.resource.data.createdAt
+              == resource.data.createdAt
+
+          && request.resource.data.viewerCount
+              is int
+
+          && request.resource.data.viewerCount
+              == resource.data.viewerCount
+
+          // STREAMER NÃO PODE ALTERAR VIEWERCOUNT
+          && request.resource.data
+              .diff(resource.data)
+              .affectedKeys()
+              .hasOnly([
+                "title",
+                "description",
+                "categoryId",
+                "thumbnailURL",
+                "status",
+                "playbackURL",
+                "startedAt",
+                "endedAt"
+              ])
+        )
+
+        ||
+
+        // ADMIN PODE ALTERAR PARA TESTES.
+        (
+          isAdmin()
+
+          && request.resource.data.viewerCount
+              is int
+
+          && request.resource.data.viewerCount
+              >= 0
+        );
+
+
+      // ================================================
+      // EXCLUIR LIVE
+      // ================================================
+
+      allow delete:
+        if
+        (
+          loggedIn()
+
+          && resource.data.streamerUid
+              == request.auth.uid
+        )
+
+        || isAdmin();
+    }
+
+
+    // ==================================================
+    // CATEGORIAS
+    // ==================================================
+
+    match /categories/{categoryId} {
+
+      allow read:
+        if true;
+
+      allow create, update, delete:
+        if isAdmin();
+    }
+
+
+    // ==================================================
+    // STREAMERS ESCOLHIDOS MANUALMENTE
+    // ==================================================
+    //
+    // Não controla mais o TOP 3 da Home.
+    // Mantemos para uso futuro.
+    // ==================================================
+
+    match /featuredStreamers/{uid} {
+
+      allow read:
+        if true;
+
+      allow create, update, delete:
+        if isAdmin();
+    }
+
+
+    // ==================================================
+    // BLOQUEIO FINAL
+    // ==================================================
+
+    match /{document=**} {
+
+      allow read, write:
+        if false;
+    }
+  }
+}
