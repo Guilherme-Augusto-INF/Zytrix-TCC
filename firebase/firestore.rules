@@ -44,6 +44,246 @@ service cloud.firestore {
 
 
     // ==================================================
+    // ZY COINS - FUNÇÕES AUXILIARES
+    // ==================================================
+
+    function validCoinAmount(amount) {
+      return amount is int
+        && amount >= 1
+        && amount <= 100000;
+    }
+
+    function validWalletShape(data, uid) {
+      return data.uid == uid
+        && data.balance is int
+        && data.balance >= 0
+        && data.totalSent is int
+        && data.totalSent >= 0
+        && data.totalReceived is int
+        && data.totalReceived >= 0
+        && data.lastTransactionId is string
+        && data.lastTransactionId.size() <= 128
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && data.keys().hasAll([
+          "uid",
+          "balance",
+          "totalSent",
+          "totalReceived",
+          "lastTransactionId",
+          "createdAt",
+          "updatedAt"
+        ])
+        && data.keys().hasOnly([
+          "uid",
+          "balance",
+          "totalSent",
+          "totalReceived",
+          "lastTransactionId",
+          "createdAt",
+          "updatedAt"
+        ]);
+    }
+
+    function validCoinPackage(packageId, coins, priceCents) {
+      return
+        (
+          packageId == "zy100"
+          && coins == 100
+          && priceCents == 490
+        )
+        ||
+        (
+          packageId == "zy500"
+          && coins == 500
+          && priceCents == 1490
+        )
+        ||
+        (
+          packageId == "zy1200"
+          && coins == 1200
+          && priceCents == 2990
+        )
+        ||
+        (
+          packageId == "zy2500"
+          && coins == 2500
+          && priceCents == 4990
+        );
+    }
+
+    function validSenderWalletUpdate(uid) {
+      let txId = request.resource.data.lastTransactionId;
+      let tx = getAfter(
+        /databases/$(database)/documents/zyCoinTransactions/$(txId)
+      ).data;
+
+      return isOwner(uid)
+        && validWalletShape(request.resource.data, uid)
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time
+        && tx.transactionId == txId
+        && tx.type == "stream_support"
+        && tx.status == "completed"
+        && tx.fromUid == uid
+        && tx.toUid != uid
+        && validCoinAmount(tx.amount)
+        && request.resource.data.balance
+            == resource.data.balance - tx.amount
+        && request.resource.data.totalSent
+            == resource.data.totalSent + tx.amount
+        && request.resource.data.totalReceived
+            == resource.data.totalReceived
+        && request.resource.data
+            .diff(resource.data)
+            .affectedKeys()
+            .hasOnly([
+              "balance",
+              "totalSent",
+              "lastTransactionId",
+              "updatedAt"
+            ]);
+    }
+
+    function validRecipientWalletUpdate(uid) {
+      let txId = request.resource.data.lastTransactionId;
+      let tx = getAfter(
+        /databases/$(database)/documents/zyCoinTransactions/$(txId)
+      ).data;
+
+      return loggedIn()
+        && request.auth.uid != uid
+        && validWalletShape(request.resource.data, uid)
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time
+        && tx.transactionId == txId
+        && tx.type == "stream_support"
+        && tx.status == "completed"
+        && tx.fromUid == request.auth.uid
+        && tx.toUid == uid
+        && validCoinAmount(tx.amount)
+        && request.resource.data.balance
+            == resource.data.balance + tx.amount
+        && request.resource.data.totalSent
+            == resource.data.totalSent
+        && request.resource.data.totalReceived
+            == resource.data.totalReceived + tx.amount
+        && request.resource.data
+            .diff(resource.data)
+            .affectedKeys()
+            .hasOnly([
+              "balance",
+              "totalReceived",
+              "lastTransactionId",
+              "updatedAt"
+            ]);
+    }
+
+    function validRecipientWalletCreate(uid) {
+      let txId = request.resource.data.lastTransactionId;
+      let tx = getAfter(
+        /databases/$(database)/documents/zyCoinTransactions/$(txId)
+      ).data;
+
+      return loggedIn()
+        && request.auth.uid != uid
+        && validWalletShape(request.resource.data, uid)
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time
+        && tx.transactionId == txId
+        && tx.type == "stream_support"
+        && tx.status == "completed"
+        && tx.fromUid == request.auth.uid
+        && tx.toUid == uid
+        && validCoinAmount(tx.amount)
+        && request.resource.data.balance == 500 + tx.amount
+        && request.resource.data.totalSent == 0
+        && request.resource.data.totalReceived == tx.amount;
+    }
+
+    function validSupportTransactionCreate(transactionId) {
+      let data = request.resource.data;
+      let streamPath = /databases/$(database)/documents/streams/$(data.streamId);
+      let senderPath = /databases/$(database)/documents/wallets/$(data.fromUid);
+      let recipientPath = /databases/$(database)/documents/wallets/$(data.toUid);
+      let senderBefore = get(senderPath).data;
+      let senderAfter = getAfter(senderPath).data;
+      let recipientAfter = getAfter(recipientPath).data;
+
+      return loggedIn()
+        && data.transactionId == transactionId
+        && data.fromUid == request.auth.uid
+        && data.toUid is string
+        && data.toUid.size() > 0
+        && data.toUid != data.fromUid
+        && data.streamId is string
+        && data.streamId.size() > 0
+        && validCoinAmount(data.amount)
+        && data.type == "stream_support"
+        && data.status == "completed"
+        && data.createdAt == request.time
+        && data.keys().hasAll([
+          "transactionId",
+          "fromUid",
+          "toUid",
+          "streamId",
+          "amount",
+          "type",
+          "status",
+          "createdAt"
+        ])
+        && data.keys().hasOnly([
+          "transactionId",
+          "fromUid",
+          "toUid",
+          "streamId",
+          "amount",
+          "type",
+          "status",
+          "createdAt"
+        ])
+        && exists(streamPath)
+        && get(streamPath).data.streamerUid == data.toUid
+        && get(streamPath).data.status == "live"
+        && exists(senderPath)
+        && senderBefore.balance is int
+        && senderBefore.balance >= data.amount
+        && senderAfter.uid == data.fromUid
+        && senderAfter.createdAt == senderBefore.createdAt
+        && senderAfter.updatedAt == request.time
+        && senderAfter.lastTransactionId == transactionId
+        && senderAfter.balance == senderBefore.balance - data.amount
+        && senderAfter.totalSent == senderBefore.totalSent + data.amount
+        && senderAfter.totalReceived == senderBefore.totalReceived
+        && recipientAfter.uid == data.toUid
+        && recipientAfter.updatedAt == request.time
+        && recipientAfter.lastTransactionId == transactionId
+        && (
+          (
+            exists(recipientPath)
+            && recipientAfter.createdAt == get(recipientPath).data.createdAt
+            && recipientAfter.balance
+                == get(recipientPath).data.balance + data.amount
+            && recipientAfter.totalSent
+                == get(recipientPath).data.totalSent
+            && recipientAfter.totalReceived
+                == get(recipientPath).data.totalReceived + data.amount
+          )
+          ||
+          (
+            !exists(recipientPath)
+            && recipientAfter.createdAt == request.time
+            && recipientAfter.balance == 500 + data.amount
+            && recipientAfter.totalSent == 0
+            && recipientAfter.totalReceived == data.amount
+          )
+        );
+    }
+
+
+    // ==================================================
     // ADMINS
     // ==================================================
 
@@ -636,6 +876,178 @@ service cloud.firestore {
         )
 
         || isAdmin();
+    }
+
+
+
+
+    // ==================================================
+    // ZY COINS - CARTEIRAS
+    // ==================================================
+    // Cada conta pode ativar uma única carteira com 500
+    // Zy Coins de bônus. O cliente não pode aumentar o
+    // próprio saldo. Transferências entre espectador e
+    // streamer precisam ocorrer na mesma transação.
+    // ==================================================
+
+    match /wallets/{uid} {
+
+      allow read:
+        if isOwner(uid)
+        || isAdmin();
+
+      allow create:
+        if
+        (
+          isOwner(uid)
+          && validWalletShape(request.resource.data, uid)
+          && request.resource.data.balance == 500
+          && request.resource.data.totalSent == 0
+          && request.resource.data.totalReceived == 0
+          && request.resource.data.lastTransactionId == ""
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.updatedAt == request.time
+        )
+        || validRecipientWalletCreate(uid)
+        || isAdmin();
+
+      allow update:
+        if validSenderWalletUpdate(uid)
+        || validRecipientWalletUpdate(uid)
+        || isAdmin();
+
+      allow delete:
+        if isAdmin();
+    }
+
+
+    // ==================================================
+    // ZY COINS - APOIOS EM LIVE
+    // ==================================================
+    // Imutável para usuários. O documento é criado junto
+    // com a retirada do espectador e o crédito do streamer.
+    // ==================================================
+
+    match /zyCoinTransactions/{transactionId} {
+
+      allow read:
+        if loggedIn()
+        && (
+          resource.data.fromUid == request.auth.uid
+          || resource.data.toUid == request.auth.uid
+          || isAdmin()
+        );
+
+      allow create:
+        if validSupportTransactionCreate(transactionId);
+
+      allow update, delete:
+        if false;
+    }
+
+
+    // ==================================================
+    // ZY COINS - PEDIDOS DE COMPRA
+    // ==================================================
+    // Usuário comum cria pedido pendente. Crédito real de
+    // moedas só deve acontecer após confirmação segura do
+    // gateway/backend. Admin pode usar modo demo no TCC.
+    // ==================================================
+
+    match /zyCoinOrders/{orderId} {
+
+      allow read:
+        if loggedIn()
+        && (
+          resource.data.uid == request.auth.uid
+          || isAdmin()
+        );
+
+      allow create:
+        if loggedIn()
+        && request.resource.data.uid == request.auth.uid
+        && validCoinPackage(
+          request.resource.data.packageId,
+          request.resource.data.coins,
+          request.resource.data.priceCents
+        )
+        && (
+          request.resource.data.paymentMethod == "pix"
+          || request.resource.data.paymentMethod == "card"
+        )
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.keys().hasAll([
+          "uid",
+          "packageId",
+          "coins",
+          "priceCents",
+          "paymentMethod",
+          "status",
+          "mode",
+          "createdAt",
+          "paidAt"
+        ])
+        && request.resource.data.keys().hasOnly([
+          "uid",
+          "packageId",
+          "coins",
+          "priceCents",
+          "paymentMethod",
+          "status",
+          "mode",
+          "createdAt",
+          "paidAt"
+        ])
+        && (
+          (
+            request.resource.data.status == "pending"
+            && request.resource.data.mode == "prototype"
+            && request.resource.data.paidAt == null
+          )
+          ||
+          (
+            isAdmin()
+            && request.resource.data.status == "paid"
+            && request.resource.data.mode == "admin_demo"
+            && request.resource.data.paidAt == request.time
+          )
+        );
+
+      allow update:
+        if isAdmin()
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.packageId == resource.data.packageId
+        && request.resource.data.coins == resource.data.coins
+        && request.resource.data.priceCents == resource.data.priceCents
+        && request.resource.data.paymentMethod == resource.data.paymentMethod
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.mode == resource.data.mode
+        && (
+          request.resource.data.status == "pending"
+          || request.resource.data.status == "paid"
+          || request.resource.data.status == "cancelled"
+        )
+        && (
+          (
+            request.resource.data.status == "paid"
+            && request.resource.data.paidAt == request.time
+          )
+          ||
+          (
+            request.resource.data.status != "paid"
+            && request.resource.data.paidAt == null
+          )
+        )
+        && request.resource.data
+            .diff(resource.data)
+            .affectedKeys()
+            .hasOnly([
+              "status",
+              "paidAt"
+            ]);
+
+      allow delete:
+        if isAdmin();
     }
 
 
