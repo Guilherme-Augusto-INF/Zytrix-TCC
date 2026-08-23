@@ -27,6 +27,7 @@ import {
     limit,
     getDocs,
     writeBatch,
+    onSnapshot,
 } from "firebase/firestore"
 
 
@@ -86,6 +87,9 @@ export default function PerfilZytrix() {
 
     const [conta, setConta] =
         useState<any>(null)
+
+    const [zyCoins, setZyCoins] =
+        useState(0)
 
     const [carregando, setCarregando] =
         useState(true)
@@ -1584,6 +1588,85 @@ export default function PerfilZytrix() {
 
 
     // ==================================================
+    // ZY COINS - SALDO EM TEMPO REAL
+    // ==================================================
+
+    useEffect(() => {
+
+        if (!usuario) {
+
+            setZyCoins(0)
+
+            return
+
+        }
+
+
+        const carteiraRef =
+            doc(
+                db,
+                "wallets",
+                usuario.uid
+            )
+
+
+        const unsubscribeCarteira =
+            onSnapshot(
+                carteiraRef,
+                (snapshot) => {
+
+                    if (!snapshot.exists()) {
+
+                        setZyCoins(0)
+
+                        return
+
+                    }
+
+
+                    const dados =
+                        snapshot.data()
+
+
+                    const saldo =
+                        Number(
+                            dados.balance ?? 0
+                        )
+
+
+                    setZyCoins(
+                        Number.isFinite(saldo)
+                            ? Math.max(
+                                0,
+                                Math.floor(saldo)
+                            )
+                            : 0
+                    )
+
+                },
+                (error) => {
+
+                    console.error(
+                        "Erro ao carregar Zy Coins:",
+                        error
+                    )
+
+                    setZyCoins(0)
+
+                }
+            )
+
+
+        return () => {
+
+            unsubscribeCarteira()
+
+        }
+
+    }, [usuario])
+
+
+    // ==================================================
     // COOLDOWN DO REENVIO DO EMAIL
     // ==================================================
 
@@ -2413,6 +2496,35 @@ export default function PerfilZytrix() {
                                 <span>
 
                                     {dataCriacaoConta()}
+
+                                </span>
+
+                            </div>
+
+
+                            {/* ZY COINS */}
+
+                            <div style={separadorConta} />
+
+
+                            <div style={linhaConta}>
+
+                                <span>
+
+                                    <strong>
+                                        Zy Coins:
+                                    </strong>
+
+                                </span>
+
+
+                                <span style={saldoZyCoins}>
+
+                                    ◈{" "}
+
+                                    {zyCoins.toLocaleString(
+                                        "pt-BR"
+                                    )}
 
                                 </span>
 
@@ -3532,6 +3644,40 @@ const linhaConta: React.CSSProperties = {
 
     flexWrap:
         "wrap",
+}
+
+
+const saldoZyCoins: React.CSSProperties = {
+
+    display:
+        "inline-flex",
+
+    alignItems:
+        "center",
+
+    gap:
+        "5px",
+
+    padding:
+        "6px 10px",
+
+    borderRadius:
+        "20px",
+
+    backgroundColor:
+        "rgba(34, 211, 238, 0.12)",
+
+    border:
+        "1px solid rgba(34, 211, 238, 0.30)",
+
+    color:
+        "#67E8F9",
+
+    fontSize:
+        "13px",
+
+    fontWeight:
+        800,
 }
 
 
