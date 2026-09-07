@@ -1,44 +1,42 @@
-# Zytrix — Zy Coins
+# Zytrix — TCC
 
-Este pacote adiciona o sistema inicial de Zy Coins ao projeto.
+Plataforma web de livestream desenvolvida para o TCC do curso técnico em Informática.
 
-## Arquivos
+## Estado atual
 
-- `loja/main.tsx` — carteira e seleção de pacotes de Zy Coins.
-- `pagamento/main.tsx` — checkout demonstrativo.
-- `live/main.tsx` — versão atualizada da `/live` com envio de Zy Coins ao streamer.
-- `firebase/firestore.rules` — regras completas do Firestore, mantendo as regras anteriores e acrescentando Zy Coins.
+A versão mais recente do projeto é a edição web em **HTML, CSS e JavaScript ES Modules**, com:
 
-## Fluxo
+- Firebase Authentication e Cloud Firestore;
+- Twitch Embed e Kick Embed;
+- chat em tempo real por live;
+- moderação de chat;
+- categorias e subcategorias;
+- perfil e conta de streamer;
+- configuração de live;
+- Zy Coins e apoio a streamers;
+- loja e pagamento demonstrativo;
+- preparação para deploy na Vercel.
 
-1. O usuário autenticado ativa automaticamente sua carteira.
-2. Cada carteira nova recebe 500 Zy Coins de bônus de demonstração.
-3. Na Loja, o usuário seleciona um pacote.
-4. A seleção é salva em `localStorage` com a chave `zytrixSelectedCoinPackage`.
-5. No Preview do Figma Sites, use um botão nativo do Figma com Page Link para `/pagamento`.
-6. Usuário comum pode criar um pedido `pending`; nenhuma moeda é creditada pelo navegador.
-7. Administradores podem usar o modo de demonstração, que credita o pacote imediatamente.
-8. Na `/live`, espectadores podem enviar Zy Coins para o streamer.
-9. O envio é feito com uma transação atômica do Firestore: débito do espectador + crédito do streamer + registro da transação.
+## Snapshot atual
 
-## Coleções novas
+O snapshot completo mais recente está em:
 
-- `wallets/{uid}`
-- `zyCoinTransactions/{transactionId}`
-- `zyCoinOrders/{orderId}`
+`/snapshots/Zytrix-HTML-CSS-Twitch-Kick-v3.zip`
 
-## Segurança
+Ele corresponde à versão validada com **Twitch + Kick funcionando lado a lado**.
 
-O navegador não pode aumentar livremente o próprio saldo. Os apoios usam `runTransaction()` e as regras validam o débito e o crédito juntos com `getAfter()`.
+## Estrutura histórica
 
-A tela de pagamento NÃO processa dinheiro real e NÃO coleta dados de cartão. Para aceitar pagamentos reais, será necessário integrar um gateway/backend seguro e só creditar Zy Coins após confirmação do servidor.
+- `Zytrix-TCC-code-layers/` — Code Layers da versão original no Figma Sites;
+- `figma/` — arquivo/projeto original do Figma;
+- `firebase/` — regras e arquivos relacionados ao Firebase;
+- `docs/` — documentação e screenshots;
+- `snapshots/` — versões completas da edição HTML/CSS/JS.
 
-## Figma Sites
+## Próxima etapa planejada
 
-Crie/prepare:
+Sincronizar automaticamente o status da Zytrix com Twitch/Kick: ao iniciar uma transmissão na plataforma vinculada, a live deverá entrar em `live` automaticamente no Firestore e voltar para `offline` quando a transmissão terminar.
 
-- página `/loja` com `loja/main.tsx`;
-- página `/pagamento` com `pagamento/main.tsx`;
-- substitua o Code Layer atual da `/live` por `live/main.tsx`.
+## Observação
 
-Como a navegação programática dentro do Preview do Figma Sites já apresentou problema no projeto, mantenha a navegação Loja → Pagamento com um botão nativo do Figma usando Page Link.
+A tela de pagamento do projeto é demonstrativa e não processa pagamentos reais nem coleta dados reais de cartão.
