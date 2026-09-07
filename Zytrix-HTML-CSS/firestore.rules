@@ -1,0 +1,119 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function owner(uid) { return signedIn() && request.auth.uid == uid; }
+    function admin() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+        && get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.active == true;
+    }
+    function adminUid(uid) {
+      return exists(/databases/$(database)/documents/admins/$(uid))
+        && get(/databases/$(database)/documents/admins/$(uid)).data.active == true;
+    }
+    function streamOwner(streamId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/streams/$(streamId))
+        && get(/databases/$(database)/documents/streams/$(streamId)).data.streamerUid == request.auth.uid;
+    }
+    function validText(v, max) { return v is string && v.size() <= max; }
+    function validCoinAmount(v) { return v is int && v >= 1 && v <= 100000; }
+    function blocked(streamId, uid) {
+      let p = /databases/$(database)/documents/streams/$(streamId)/moderation/$(uid);
+      return exists(p) && (
+        get(p).data.banned == true ||
+        (get(p).data.mutedUntil is timestamp && get(p).data.mutedUntil > request.time)
+      );
+    }
+
+    match /admins/{uid} { allow read: if true; allow create, update, delete: if false; }
+
+    match /users/{uid} {
+      allow read: if owner(uid) || admin();
+      allow create: if owner(uid) && request.resource.data.uid == uid && request.resource.data.createdAt == request.time;
+      allow update: if owner(uid) && request.resource.data.uid == resource.data.uid && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if false;
+      match /following/{channelId} { allow read, create, delete: if owner(uid) || admin(); allow update: if false; }
+    }
+
+    match /profiles/{uid} {
+      allow read: if true;
+      allow create: if owner(uid) && request.resource.data.uid == uid && validText(request.resource.data.username, 30) && request.resource.data.username.size() >= 2 && validText(request.resource.data.bio, 500) && validText(request.resource.data.photoURL, 2048) && request.resource.data.createdAt == request.time;
+      allow update: if owner(uid) && request.resource.data.uid == resource.data.uid && request.resource.data.createdAt == resource.data.createdAt && validText(request.resource.data.username, 30) && request.resource.data.username.size() >= 2 && validText(request.resource.data.bio, 500) && validText(request.resource.data.photoURL, 2048) && (request.resource.data.username == resource.data.username || request.resource.data.usernameUpdatedAt == request.time);
+      allow delete: if false;
+    }
+
+    match /channels/{uid} {
+      allow read: if true;
+      allow create: if owner(uid) && request.resource.data.ownerUid == uid && request.resource.data.isLive == false && request.resource.data.createdAt == request.time;
+      allow update: if owner(uid) && request.resource.data.ownerUid == resource.data.ownerUid && request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if owner(uid) || admin();
+    }
+
+    match /streams/{streamId} {
+      allow read: if true;
+      allow create: if signedIn() && request.resource.data.streamerUid == request.auth.uid && request.resource.data.channelId == request.auth.uid && (request.resource.data.status == 'live' || request.resource.data.status == 'offline') && request.resource.data.viewerCount == 0 && request.resource.data.createdAt == request.time;
+      allow update: if admin() || (signedIn() && resource.data.streamerUid == request.auth.uid && request.resource.data.streamerUid == resource.data.streamerUid && request.resource.data.channelId == resource.data.channelId && request.resource.data.createdAt == resource.data.createdAt && request.resource.data.viewerCount == resource.data.viewerCount && (request.resource.data.status == 'live' || request.resource.data.status == 'offline'));
+      allow delete: if admin() || (signedIn() && resource.data.streamerUid == request.auth.uid);
+
+      match /chat/{messageId} {
+        allow read: if true;
+        allow create: if signedIn() && request.resource.data.keys().hasOnly(['uid','text','createdAt']) && request.resource.data.uid == request.auth.uid && request.resource.data.text is string && request.resource.data.text.size() >= 1 && request.resource.data.text.size() <= 300 && request.resource.data.createdAt == request.time && get(/databases/$(database)/documents/streams/$(streamId)).data.status == 'live' && !blocked(streamId, request.auth.uid);
+        allow update: if false;
+        allow delete: if signedIn() && (resource.data.uid == request.auth.uid || admin() || (streamOwner(streamId) && !adminUid(resource.data.uid)));
+      }
+
+      match /moderation/{targetUid} {
+        allow read: if signedIn() && (request.auth.uid == targetUid || admin() || streamOwner(streamId));
+        allow create, update: if signedIn() && (admin() || (streamOwner(streamId) && !adminUid(targetUid))) && request.resource.data.keys().hasOnly(['banned','mutedUntil','updatedBy','updatedAt']) && request.resource.data.banned is bool && (request.resource.data.mutedUntil == null || request.resource.data.mutedUntil is timestamp) && request.resource.data.updatedBy == request.auth.uid && request.resource.data.updatedAt == request.time;
+        allow delete: if signedIn() && (admin() || (streamOwner(streamId) && !adminUid(targetUid)));
+      }
+
+      match /pinned/{pinId} {
+        allow read: if true;
+        allow create, update: if signedIn() && pinId == 'current' && (admin() || streamOwner(streamId)) && request.resource.data.keys().hasOnly(['messageId','pinnedBy','updatedAt']) && request.resource.data.messageId is string && request.resource.data.messageId.size() > 0 && request.resource.data.messageId.size() <= 128 && request.resource.data.pinnedBy == request.auth.uid && request.resource.data.updatedAt == request.time;
+        allow delete: if signedIn() && (admin() || streamOwner(streamId));
+      }
+    }
+
+    match /wallets/{uid} {
+      allow read: if owner(uid) || admin();
+      allow create: if admin() || (owner(uid) && request.resource.data.keys().hasOnly(['uid','balance','totalSent','totalReceived','lastTransactionId','createdAt','updatedAt']) && request.resource.data.uid == uid && request.resource.data.balance == 500 && request.resource.data.totalSent == 0 && request.resource.data.totalReceived == 0 && request.resource.data.lastTransactionId == '' && request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time) || validRecipientWalletCreate(uid);
+      allow update: if admin() || validSenderWalletUpdate(uid) || validRecipientWalletUpdate(uid);
+      allow delete: if admin();
+    }
+
+    function validSenderWalletUpdate(uid) {
+      let txId = request.resource.data.lastTransactionId;
+      let tx = getAfter(/databases/$(database)/documents/zyCoinTransactions/$(txId)).data;
+      return owner(uid) && tx.transactionId == txId && tx.type == 'stream_support' && tx.status == 'completed' && tx.fromUid == uid && tx.toUid != uid && validCoinAmount(tx.amount) && request.resource.data.uid == resource.data.uid && request.resource.data.createdAt == resource.data.createdAt && request.resource.data.updatedAt == request.time && request.resource.data.balance == resource.data.balance - tx.amount && request.resource.data.balance >= 0 && request.resource.data.totalSent == resource.data.totalSent + tx.amount && request.resource.data.totalReceived == resource.data.totalReceived;
+    }
+    function validRecipientWalletUpdate(uid) {
+      let txId = request.resource.data.lastTransactionId;
+      let tx = getAfter(/databases/$(database)/documents/zyCoinTransactions/$(txId)).data;
+      return signedIn() && tx.transactionId == txId && tx.type == 'stream_support' && tx.status == 'completed' && tx.fromUid == request.auth.uid && tx.toUid == uid && tx.toUid != tx.fromUid && validCoinAmount(tx.amount) && request.resource.data.uid == resource.data.uid && request.resource.data.createdAt == resource.data.createdAt && request.resource.data.updatedAt == request.time && request.resource.data.balance == resource.data.balance + tx.amount && request.resource.data.totalSent == resource.data.totalSent && request.resource.data.totalReceived == resource.data.totalReceived + tx.amount;
+    }
+    function validRecipientWalletCreate(uid) {
+      let txId = request.resource.data.lastTransactionId;
+      let tx = getAfter(/databases/$(database)/documents/zyCoinTransactions/$(txId)).data;
+      return signedIn() && tx.transactionId == txId && tx.type == 'stream_support' && tx.status == 'completed' && tx.fromUid == request.auth.uid && tx.toUid == uid && tx.toUid != tx.fromUid && validCoinAmount(tx.amount) && request.resource.data.uid == uid && request.resource.data.balance == 500 + tx.amount && request.resource.data.totalSent == 0 && request.resource.data.totalReceived == tx.amount && request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time;
+    }
+
+    match /zyCoinTransactions/{transactionId} {
+      allow read: if signedIn() && (resource.data.fromUid == request.auth.uid || resource.data.toUid == request.auth.uid || admin());
+      allow create: if signedIn() && request.resource.data.keys().hasOnly(['transactionId','fromUid','toUid','streamId','amount','type','status','createdAt']) && request.resource.data.transactionId == transactionId && request.resource.data.fromUid == request.auth.uid && request.resource.data.toUid != request.auth.uid && request.resource.data.type == 'stream_support' && request.resource.data.status == 'completed' && validCoinAmount(request.resource.data.amount) && request.resource.data.createdAt == request.time && exists(/databases/$(database)/documents/streams/$(request.resource.data.streamId)) && get(/databases/$(database)/documents/streams/$(request.resource.data.streamId)).data.streamerUid == request.resource.data.toUid && get(/databases/$(database)/documents/streams/$(request.resource.data.streamId)).data.status == 'live';
+      allow update, delete: if false;
+    }
+
+    match /zyCoinOrders/{orderId} {
+      allow read: if signedIn() && (resource.data.uid == request.auth.uid || admin());
+      allow create: if signedIn() && request.resource.data.uid == request.auth.uid && request.resource.data.createdAt == request.time && ((request.resource.data.status == 'pending' && request.resource.data.mode == 'prototype' && request.resource.data.paidAt == null) || (admin() && request.resource.data.status == 'paid' && request.resource.data.mode == 'admin_demo' && request.resource.data.paidAt == request.time));
+      allow update, delete: if admin();
+    }
+
+    match /categories/{id} { allow read: if true; allow write: if admin(); }
+    match /featuredStreamers/{id} { allow read: if true; allow write: if admin(); }
+    match /{document=**} { allow read, write: if false; }
+  }
+}
