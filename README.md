@@ -1,42 +1,37 @@
-# Zytrix — TCC
+# Zytrix — Figma
 
-Plataforma web de livestream desenvolvida para o TCC do curso técnico em Informática.
+Versão original do projeto Zytrix desenvolvida no **Figma Sites**, com Code Layers em React/TypeScript e integração com Firebase.
 
-## Estado atual
+Este repositório fica preservado como histórico e versão do TCC criada no Figma.
 
-A versão mais recente do projeto é a edição web em **HTML, CSS e JavaScript ES Modules**, com:
+## Conteúdo
 
-- Firebase Authentication e Cloud Firestore;
-- Twitch Embed e Kick Embed;
-- chat em tempo real por live;
-- moderação de chat;
-- categorias e subcategorias;
-- perfil e conta de streamer;
-- configuração de live;
-- Zy Coins e apoio a streamers;
-- loja e pagamento demonstrativo;
-- preparação para deploy na Vercel.
-
-## Snapshot atual
-
-O snapshot completo mais recente está em:
-
-`/snapshots/Zytrix-HTML-CSS-Twitch-Kick-v3.zip`
-
-Ele corresponde à versão validada com **Twitch + Kick funcionando lado a lado**.
-
-## Estrutura histórica
-
-- `Zytrix-TCC-code-layers/` — Code Layers da versão original no Figma Sites;
+- `Zytrix-TCC-code-layers/` — Code Layers usados nas páginas do Figma Sites;
 - `figma/` — arquivo/projeto original do Figma;
-- `firebase/` — regras e arquivos relacionados ao Firebase;
-- `docs/` — documentação e screenshots;
-- `snapshots/` — versões completas da edição HTML/CSS/JS.
+- `firebase/` — regras do Firestore utilizadas pela versão Figma;
+- `docs/` — documentação e screenshots do projeto.
 
-## Próxima etapa planejada
+## Funcionalidades da versão Figma
 
-Sincronizar automaticamente o status da Zytrix com Twitch/Kick: ao iniciar uma transmissão na plataforma vinculada, a live deverá entrar em `live` automaticamente no Firestore e voltar para `offline` quando a transmissão terminar.
+- Firebase Authentication;
+- perfis e contas de streamer;
+- configuração de lives;
+- categorias e subcategorias;
+- Twitch Embed;
+- Zy Coins;
+- loja e pagamento demonstrativo;
+- páginas públicas e autenticadas.
+
+## Versão Web
+
+O desenvolvimento atual em **HTML, CSS e JavaScript** foi separado deste repositório.
+
+Repositório da versão Web:
+
+https://github.com/Guilherme-Augusto-INF/Zytrix-Web
+
+A versão Web inclui também suporte a Twitch + Kick, chat em tempo real e moderação.
 
 ## Observação
 
-A tela de pagamento do projeto é demonstrativa e não processa pagamentos reais nem coleta dados reais de cartão.
+A tela de pagamento é demonstrativa e não processa pagamentos reais nem deve coletar dados reais de cartão.
